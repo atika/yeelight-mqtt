@@ -3,16 +3,17 @@ import time
 import threading
 import os
 import json
-import pyyeelight
-from lightbulbstate import LightBulbState
+import yeelight
+from bulb import LightBulbState
 
 #mine
 import mqtt
-import yamlparser
+import config
 
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(name)s: %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
 _LOGGER = logging.getLogger(__name__)
-QUERY_TIME = 2
+
+interval = 2
 
 bulbs=[]
 processNow = False
@@ -30,12 +31,15 @@ def init_lamps(config):
 		if (sid is None):
 			continue
 		try:
-			data = sids[sid]
-			yeelight = pyyeelight.YeelightBulb(sid)
-			name = data.get("name", sid)
-			model = data.get("model", "light")
-			yeelight.__name__ = name #add name
-			bulb = LightBulbState(sid, model, yeelight)
+			data           = sids[sid]
+			name           = data.get("name", sid)
+			group          = data.get("group", config.get("default_group", "light"))
+			port           = data.get("port", 55443)
+			effect         = data.get("effect", "smooth")
+			duration       = data.get("duration", 300)
+			light          = yeelight.Bulb(sid, port, effect, duration)
+			light.__name__ = name #add name
+			bulb           = LightBulbState(sid, group, light)
 			bulb.update_properties()
 			lamps.append(bulb)
 		except Exception as e:
@@ -44,11 +48,12 @@ def init_lamps(config):
 
 def wait():
 	global processNow
-	for x in range(1,10):
+	rmax = int(interval / 0.2)
+	for x in range(1,rmax):
 		if (processNow):
 			processNow=False
 			break
-		time.sleep(QUERY_TIME/10)
+		time.sleep(interval/rmax)
 
 def process_lamp_states(client):
 	global bulbs
@@ -62,16 +67,16 @@ def process_lamp_states(client):
 				# _LOGGER.debug(str(bulb.name) + " ===> " + hashold + "-" + hashnew)
 
 				if (hashold != hashnew):
-					_LOGGER.info("!!!! " + bulb.name + ":" + hashold + "->" + hashnew)
-					data = {'status':bulb.status, 'ct':bulb.color_temperature, 'bright':bulb.bright, 'rgb':bulb.rgb}
-					client.publish(bulb.model, bulb.name, data)
+					_LOGGER.debug("!!!! " + bulb.name + ":" + hashold + "->" + hashnew)
+					data = {'status':bulb.status, 'ct':bulb.color_temperature, 'bright':bulb.bright, 'rgb':bulb.rgb} if bulb.status != "disconnected" else {'status': bulb.status}
+					client.publish(bulb.group, bulb.name, data)
 		except Exception as e:
 			_LOGGER.error('Error while sending from gateway to mqtt: ', str(e))
 
 def process_mqtt_messages(client):
 	global processNow, bulbs
 	while True:
-		try: 
+		try:
 			data = client._queue.get()
 			_LOGGER.debug("data from mqtt: " + format(data))
 
@@ -81,8 +86,9 @@ def process_mqtt_messages(client):
 			for bulb in bulbs:
 				if (bulb.ip != sid):
 					continue
-				bulb.process_command(param, value)
-				processNow=True
+				if bulb.process_command(param, value):
+					time.sleep(0.5)
+					processNow=True
 
 			client._queue.task_done()
 		except Exception as e:
@@ -90,15 +96,21 @@ def process_mqtt_messages(client):
 
 if __name__ == "__main__":
 	_LOGGER.info("Loading config file...")
-	config=yamlparser.load_yaml('config/config.yaml')
+	cfg = config.load_yaml('config/config.yaml')
 
 	_LOGGER.info("Init mqtt client.")
-	client = mqtt.Mqtt(config)
+	client = mqtt.Mqtt(cfg)
 	client.connect()
-	#only this devices can be controlled from MQTT
-	client.subscribe("light", "+", "+", "set")
-	
-	bulbs = init_lamps(config)
+
+	default_group = cfg.get("default_group", "light")
+	cmd_suffix = cfg.get("mqtt", {}).get("cmd_suffix", "set")
+	groups = set([props.get("group", default_group) for sid,props in cfg.get("sids", {}).items() if type(props) == dict])
+	for group in groups:
+		client.subscribe(group, "+", "+", cmd_suffix)
+
+	bulbs = init_lamps(cfg)
+
+	interval = max(2, cfg.get("interval", 2))
 
 	t1 = threading.Thread(target=process_lamp_states, args=[client])
 	t1.daemon = True
@@ -107,6 +119,10 @@ if __name__ == "__main__":
 	t2 = threading.Thread(target=process_mqtt_messages, args=[client])
 	t2.daemon = True
 	t2.start()
+
+	if interval > 4:
+		time.sleep(4)
+		processNow = True
 
 	while True:
 		time.sleep(10)
