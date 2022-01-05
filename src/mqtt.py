@@ -50,7 +50,7 @@ class Mqtt:
 		self._threads = []
 
 	def connect(self):
-		_LOGGER.info("Connecting to MQTT server " + self.server + ":" + str(self.port) + " with username " + self.username)
+		_LOGGER.info("Connecting to MQTT server %s:%d.", self.server, self.port)
 		self._client = mqtt.Client(self.client_id)
 		if (self.username != "" and self.password != ""):
 			self._client.username_pw_set(self.username, self.password)
