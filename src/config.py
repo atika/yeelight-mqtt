@@ -6,7 +6,7 @@ _LOGGER = logging.getLogger(__name__)
 def load_yaml(file):
     try:
         stram = open(file, "r")
-        yaml_data = yaml.load(stram)
+        yaml_data = yaml.safe_load(stram)
         return yaml_data
     except Exception as e:
         raise
