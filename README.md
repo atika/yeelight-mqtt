@@ -17,6 +17,20 @@ will turn on light and translate devices state from gateway:
 "home/light/main-color/rgb" 1247743
 ```
 
+* [Config](#config)
+  - [Examples](#examples)
+* [Commands](#commands)
+  - [Status](#status-status-or-power)
+  - [Brightness](#brightness-bright)
+  - [Color temperature](#color-temperature-ct)
+  - [Color](#color-rgb-or-color)
+  - [Music Mode](#music-mode)
+  - [Scene](#scene)
+  - [Flow](#flow)
+  - [Bulb effect and duration](#bulb-effect-and-duration)
+* [Docker](#docker)
+
+
 ## Config
 Edit file config/config-sample.yaml and rename it to __config/config.yaml__
 
@@ -35,11 +49,19 @@ Edit file config/config-sample.yaml and rename it to __config/config.yaml__
     - __effect__: The type of transition, can be "smooth" or "sudden"
     - __duration__: Effect duration in ms (used by smooth transition)
     - __port__: Port to reach the bulb (optional, default: 55443)
+    - __music_mode__:
+        * __ip__: Address IP of the gateway for the bulb to connect
+        * __port__: Port
+
 * __interval__: Status query interval in seconds (query is also sent when a command is processed) (default: 2s)
 * __json_payload__: True to send a global json payload or each characteristic indivilually in different topic. (optional, default: false)
 * __default_group__: The group for the lights without a group (default "light").
 
-### Example:
+* __music_mode__:
+  - __ip__: Default address IP of the gateway for the bulb to connect
+  - __port__: Default port for music mode
+
+### Examples:
 
 With a __topic__ defined to `home/{group}/lights` and __default_group__ to `room`:
   - The topic for the bulb __light1__ without group will be: `home/room/lights/light1`
@@ -63,23 +85,39 @@ or by default for each characteristics:
   home/room/lights/light1/rgb -> "16711680"
 ```
 
-## Command
+## Commands
 
 ### Status (status or power)
 
 You can send "on", "off" or "toggle" to `home/<group>/<name>/<status, power>/set`
 
+Send an empty payload to update the bulb state.
+
 ### Brightness (bright)
 Send a number between 0 and 100 to `home/<group>/<name>/bright/set`
 
+Adjust brightness with: +, -, up, down.
+
 ### Color temperature (ct)
 Send a number to `home/<group>/<name>/ct/set`
+
+Adjust Color temperature with: +, -, up, down.
 
 ### Color (rgb or color)
 To control the __color__ of the bulb you can send a payload to the `home/<group>/<name>/<color, rgb>/set` of type:
   - Decimal value (default, ex: 16711680)
   - Hex value (ex: #FF0000)
   - RGB (ex: 255,0,0)
+
+Switch color with: "switch" or +.
+
+### Music Mode
+
+Turn on music mode when you plan to send multiple command to avoid be rate limited by the bulb.
+
+Send "on" or "off" to `home/<group>/<name>/music/set`
+
+The internal rate limiting is also disabled when music_mode is On.
 
 ### Scene
 Choose a predefined scene between the list below and send the name to `home/<group>/<name>/scene/set`<br>
@@ -147,7 +185,13 @@ __Example:__
 * Blink Green: `12|0|300,1,65280,100|100,7,0,0|300,1,65280,1|100,7,0,0`
 * Demo: `0|0|5000,1,255,100|5000,1,16711680,100`
 
-## Docker-Compose
+### Bulb effect and duration
+
+Change the default transition effect by sending "smooth" or "sudden" to `home/<group>/<name>/effect/set`.
+
+Update the duration of the "smooth" effect, by sending the duration to `home/<group>/<name>/duration/set` (min. 30).
+
+## Docker
 Sample docker-compose.yaml file for user:
 ```
 yeelight:

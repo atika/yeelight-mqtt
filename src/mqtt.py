@@ -1,9 +1,9 @@
 import paho.mqtt.client as mqtt
-import os
 import logging
 import json
 from queue import Queue
 from threading import Thread
+from time import sleep
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -22,6 +22,7 @@ class Mqtt:
 	_g_index = -1
 	_publish_as_json = False
 	_default_group = "light"
+	_cmd_suffix = "set"
 
 	def __init__(self, config):
 		if (config == None):
@@ -46,6 +47,7 @@ class Mqtt:
 		self.g_index = self.topic.split("/").index("{group}")
 		self._default_group = config.get("default_group", "light")
 		self._publish_as_json = config.get("json_payload", False)
+		self._cmd_suffix = config.get("cmd_suffix", "set")
 		self._queue = Queue()
 		self._threads = []
 
@@ -84,14 +86,27 @@ class Mqtt:
 				self._publish(topic, payload, retain)
 
 	def _publish(self, topic, payload, retain=True):
-		_LOGGER.info("Publishing message to {}: {}.".format(topic, str(payload)))
+		if payload != "":
+			_LOGGER.info("Publishing message to {}: {}.".format(topic, str(payload)))
 		self._client.publish(topic, payload=payload, qos=0, retain=retain)
 
 	def _mqtt_on_connect(self, client, userdata, rc, unk):
 		_LOGGER.info("Connected to mqtt server.")
+		# Clear retained values on connect
+		for characteristic in ("ct", "bright", "rgb", "color", "flow", "scene", "music_mode"):
+			for sid in self._sids:
+				props = self._sids.get(sid, None)
+				if props != None:
+					name = props.get("name", sid)
+					group = props.get("group", self._default_group)
+					topic = self.topic.format(group=group, sid=name, prop=characteristic) + "/" + self._cmd_suffix
+					self._publish(topic, "", retain=True)
+					sleep(0.1)
 
 	def _mqtt_process_message(self, client, userdata, msg):
-		_LOGGER.info("Processing message in " + str(msg.topic) + ": " + str(msg.payload) + ".")
+		if str(msg.payload) != "b''":
+			_LOGGER.info("Processing message in " + str(msg.topic) + ": " + str(msg.payload) + ".")
+
 		parts = msg.topic.split("/")
 		parts.reverse()
 		len_parts = len(parts)
